@@ -5,18 +5,22 @@ Consultation et gestion des 29 communes d'El Jadida
 
 import streamlit as st
 import pandas as pd
+from supabase import create_client, Client
 
 st.set_page_config(page_title="Communes", page_icon="🏘️", layout="wide")
 
 # ============================================================================
-# RÉCUPÉRATION DE SUPABASE
+# INITIALISATION SUPABASE
 # ============================================================================
 
-if 'supabase' not in st.session_state:
-    st.error("❌ Erreur : Connexion Supabase non initialisée")
-    st.stop()
+@st.cache_resource
+def init_supabase() -> Client:
+    """Initialiser la connexion Supabase"""
+    SUPABASE_URL = "https://kvmitmgsczlwzhkccvqz.supabase.co"
+    SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2bWl0bWdzY3psd3poa2NjdnF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2NjUyMDIsImV4cCI6MjA4NjI0MTIwMn0.xvKizf9RlSv8wxonHAlPw5_hsh3bKSDlFLyOwtI7kxg"
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
-supabase = st.session_state.supabase
+supabase = init_supabase()
 
 # ============================================================================
 # INTERFACE
@@ -175,4 +179,3 @@ try:
 except Exception as e:
     st.error(f"❌ Erreur lors du chargement des données : {str(e)}")
     st.exception(e)
-
