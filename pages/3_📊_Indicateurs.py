@@ -5,18 +5,22 @@ Consultation du référentiel des 125 indicateurs
 
 import streamlit as st
 import pandas as pd
+from supabase import create_client, Client
 
 st.set_page_config(page_title="Indicateurs", page_icon="📊", layout="wide")
 
 # ============================================================================
-# RÉCUPÉRATION DE SUPABASE
+# INITIALISATION SUPABASE
 # ============================================================================
 
-if 'supabase' not in st.session_state:
-    st.error("❌ Erreur : Connexion Supabase non initialisée")
-    st.stop()
+@st.cache_resource
+def init_supabase() -> Client:
+    """Initialiser la connexion Supabase"""
+    SUPABASE_URL = "https://kvmitmgsczlwzhkccvqz.supabase.co"
+    SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2bWl0bWdzY3psd3poa2NjdnF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2NjUyMDIsImV4cCI6MjA4NjI0MTIwMn0.xvKizf9RlSv8wxonHAlPw5_hsh3bKSDlFLyOwtI7kxg"
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
-supabase = st.session_state.supabase
+supabase = init_supabase()
 
 # ============================================================================
 # INTERFACE
@@ -75,13 +79,13 @@ try:
             color='Nombre',
             color_continuous_scale='Viridis'
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     
     with col2:
         # Tableau
         st.dataframe(
             df_by_axe,
-            use_container_width=True,
+            width='stretch',
             hide_index=True,
             column_config={
                 "axe": "Axe",
@@ -132,7 +136,7 @@ try:
     
     st.dataframe(
         df_display,
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
         column_config={
             "Indicateur": st.column_config.TextColumn(
@@ -229,7 +233,7 @@ try:
             
             st.dataframe(
                 df_saisie_axe,
-                use_container_width=True,
+                width='stretch',
                 hide_index=True,
                 column_config={
                     "Taux Remplissage (%)": st.column_config.ProgressColumn(
