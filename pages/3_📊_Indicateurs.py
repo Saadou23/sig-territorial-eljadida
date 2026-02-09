@@ -97,7 +97,7 @@ try:
     # Filtres et recherche
     st.subheader("🔍 Explorer les Indicateurs")
     
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         axe_filter = st.selectbox(
@@ -106,6 +106,12 @@ try:
         )
     
     with col2:
+        theme_filter = st.selectbox(
+            "Filtrer par Thème",
+            ["Tous"] + sorted(df['theme'].dropna().unique().tolist())
+        )
+    
+    with col3:
         search = st.text_input("🔍 Rechercher", placeholder="Nom de l'indicateur...")
     
     # Appliquer filtres
@@ -113,6 +119,9 @@ try:
     
     if axe_filter != "Tous":
         df_filtered = df_filtered[df_filtered['axe'] == axe_filter]
+    
+    if theme_filter != "Tous":
+        df_filtered = df_filtered[df_filtered['theme'] == theme_filter]
     
     if search:
         df_filtered = df_filtered[
@@ -125,10 +134,8 @@ try:
     # Tableau des indicateurs
     st.subheader("📋 Liste des Indicateurs")
     
-    # Colonnes disponibles
-    colonnes_affichage = ['code', 'libelle', 'axe', 'unite', 'frequence_maj']
-    df_display = df_filtered[colonnes_affichage].copy()
-    df_display.columns = ['Code', 'Indicateur', 'Axe', 'Unité', 'Fréquence MAJ']
+    df_display = df_filtered[['code', 'libelle', 'axe', 'theme', 'unite', 'frequence_maj']].copy()
+    df_display.columns = ['Code', 'Indicateur', 'Axe', 'Thème', 'Unité', 'Fréquence MAJ']
     
     st.dataframe(
         df_display,
@@ -162,6 +169,7 @@ try:
             
             **Code** : `{indicateur['code']}`  
             **Axe** : {indicateur['axe']}  
+            **Thème** : {indicateur.get('theme', 'N/A')}  
             **Unité** : {indicateur.get('unite', 'N/A')}  
             **Fréquence de mise à jour** : {indicateur.get('frequence_maj', 'N/A')}
             
