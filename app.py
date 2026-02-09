@@ -26,8 +26,7 @@ st.set_page_config(
 def init_supabase() -> Client:
     """Initialiser la connexion Supabase"""
     SUPABASE_URL = "https://kvmitmgsczlwzhkccvqz.supabase.co"
-    SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2bWl0bWdzY3psd3poa2NjdnF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mzg5NTU1ODksImV4cCI6MjA1NDUzMTU4OX0.cC_W-hhNKAv1HbERN4zafg_8lI5Emr8"
-    
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2bWl0bWdzY3psd3poa2NjdnF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2NjUyMDIsImV4cCI6MjA4NjI0MTIwMn0.xvKizf9RlSv8wxonHAlPw5_hsh3bKSDlFLyOwtI7kxg"    
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Initialiser Supabase
