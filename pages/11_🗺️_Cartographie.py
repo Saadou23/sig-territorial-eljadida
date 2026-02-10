@@ -328,8 +328,8 @@ with tab1:
         carte = ajouter_marqueurs_communes(carte, df_communes_filtered)
         carte = ajouter_heatmap_budget(carte, df_communes_filtered)
         
-        # Afficher
-        st_folium(carte, width=None, height=600, key="map_communes")
+        # Afficher avec clé unique
+        st_folium(carte, width=None, height=600, key="map_communes", returned_objects=[])
 
 # ============================================================================
 # TAB 2 : VUE PROJETS
@@ -387,8 +387,8 @@ with tab2:
         carte = ajouter_marqueurs_communes(carte, df_communes)
         carte = ajouter_marqueurs_projets(carte, df_projets_filtered, type_filter, statut_filter)
         
-        # Afficher
-        st_folium(carte, width=None, height=600, key="map_projets")
+        # Afficher avec clé unique
+        st_folium(carte, width=None, height=600, key="map_projets", returned_objects=[])
 
 # ============================================================================
 # TAB 3 : HEATMAP BUDGET
@@ -407,8 +407,8 @@ with tab3:
     carte = ajouter_marqueurs_communes(carte, df_communes)
     carte = ajouter_heatmap_budget(carte, df_communes)
     
-    # Afficher
-    st_folium(carte, width=None, height=600, key="map_heatmap")
+    # Afficher avec clé unique
+    st_folium(carte, width=None, height=600, key="map_heatmap", returned_objects=[])
     
     # Légende
     st.markdown("### Interprétation")
