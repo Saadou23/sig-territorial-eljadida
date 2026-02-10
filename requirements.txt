@@ -1,5 +1,27 @@
-streamlit
-   supabase
-   pandas
-   plotly
-   openpyxl
+# Requirements pour le SIG Territorial El Jadida
+# À placer à la racine du repo GitHub
+
+# Core
+streamlit>=1.30.0
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Base de données
+supabase>=2.0.0
+postgrest>=0.13.0
+
+# Visualisation
+plotly>=5.18.0
+
+# Cartographie (NOUVEAU)
+folium>=0.15.0
+streamlit-folium>=0.15.0
+
+# Documents
+python-pptx>=0.6.21
+reportlab>=4.0.0
+openpyxl>=3.1.0
+
+# Utilitaires
+python-dateutil>=2.8.2
+pytz>=2023.3
