@@ -1,5 +1,6 @@
 """
-PAGE PROJETS - Version DEBUG sans cache
+PAGE : PROJETS DE MISE À NIVEAU TERRITORIALE
+Consultation et analyse des 987 projets
 """
 
 import streamlit as st
@@ -10,9 +11,10 @@ from supabase import create_client, Client
 st.set_page_config(page_title="Projets", page_icon="🏗️", layout="wide")
 
 # ============================================================================
-# SUPABASE (SANS CACHE)
+# SUPABASE
 # ============================================================================
 
+@st.cache_resource
 def init_supabase():
     SUPABASE_URL = "https://kvmitmgsczlwzhkccvqz.supabase.co"
     SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2bWl0bWdzY3psd3poa2NjdnF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2NjUyMDIsImV4cCI6MjA4NjI0MTIwMn0.xvKizf9RlSv8wxonHAlPw5_hsh3bKSDlFLyOwtI7kxg"
@@ -20,125 +22,283 @@ def init_supabase():
 
 supabase = init_supabase()
 
+# ============================================================================
+# CHARGEMENT DES DONNÉES
+# ============================================================================
+
+@st.cache_data(ttl=600)
+def load_data():
+    """Charger toutes les données nécessaires"""
+    try:
+        # Communes
+        communes_response = supabase.table('communes').select('id, nom').execute()
+        communes = {c['id']: c['nom'] for c in communes_response.data}
+        
+        # Projets
+        projets_response = supabase.table('projets_sante')\
+            .select('id, commune_id, intitule, type_projet, statut, budget_estime, avancement_pct')\
+            .execute()
+        
+        projets = projets_response.data
+        
+        return communes, projets
+    
+    except Exception as e:
+        st.error(f"Erreur de chargement : {str(e)}")
+        return {}, []
+
+# ============================================================================
+# INTERFACE
+# ============================================================================
+
 st.title("🏗️ Projets de Mise à Niveau Territoriale")
 
-# ============================================================================
-# CHARGEMENT SANS CACHE
-# ============================================================================
+# Charger les données
+with st.spinner("Chargement des données..."):
+    communes, projets = load_data()
 
-st.info("🔍 Mode DEBUG activé - Chargement direct sans cache")
+if not projets:
+    st.warning("⚠️ Aucun projet trouvé")
+    st.stop()
 
-try:
-    # 1. Charger les communes
-    st.write("**Étape 1 : Chargement des communes...**")
-    communes_response = supabase.table('communes').select('id, nom').execute()
-    communes = {c['id']: c['nom'] for c in communes_response.data}
-    st.success(f"✅ {len(communes)} communes chargées")
-    
-    # 2. Compter les projets
-    st.write("**Étape 2 : Comptage des projets...**")
-    count_response = supabase.table('projets_sante').select('id', count='exact').execute()
-    
-    # DEBUG : Afficher la réponse brute
-    with st.expander("🔍 Réponse brute de Supabase"):
-        st.write("Response object:", count_response)
-        st.write("Data:", count_response.data)
-        st.write("Count:", getattr(count_response, 'count', 'N/A'))
-    
-    nb_projets = len(count_response.data)
-    st.success(f"✅ {nb_projets} projets trouvés")
-    
-    if nb_projets == 0:
-        st.error("❌ Aucun projet dans la table projets_sante")
-        st.info("Vérifiez avec cette requête SQL : `SELECT COUNT(*) FROM projets_sante;`")
-        st.stop()
-    
-    # 3. Charger les projets (limité à 100 pour debug)
-    st.write("**Étape 3 : Chargement des projets (100 premiers)...**")
-    projets_response = supabase.table('projets_sante')\
-        .select('id, commune_id, intitule, type_projet, statut, budget_estime')\
-        .limit(100)\
-        .execute()
-    
-    projets = projets_response.data
-    st.success(f"✅ {len(projets)} projets chargés")
-    
-    # 4. Créer DataFrame
-    df = pd.DataFrame(projets)
-    df['commune_nom'] = df['commune_id'].map(communes)
-    df['budget_mdh'] = df['budget_estime'].fillna(0) / 1_000_000
-    
-    # Afficher les données brutes
-    with st.expander("🔍 Aperçu des données"):
-        st.write("**Colonnes disponibles :**", df.columns.tolist())
-        st.write("**3 premiers projets :**")
-        st.dataframe(df.head(3))
-    
-    # KPI
+# Créer DataFrame
+df = pd.DataFrame(projets)
+df['commune_nom'] = df['commune_id'].map(communes)
+df['budget_mdh'] = df['budget_estime'].fillna(0) / 1_000_000
+
+# KPI Globaux
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+    st.metric("🏗️ Total Projets", f"{len(df):,}")
+
+with col2:
+    budget_total = df['budget_mdh'].sum()
+    st.metric("💰 Budget Total", f"{budget_total:,.0f} MDH")
+
+with col3:
+    budget_moyen = df['budget_mdh'].mean()
+    st.metric("📊 Budget Moyen", f"{budget_moyen:,.1f} MDH")
+
+with col4:
+    nb_communes = df['commune_id'].nunique()
+    st.metric("🏘️ Communes", f"{nb_communes}/{len(communes)}")
+
+st.divider()
+
+# Filtres
+st.subheader("🔍 Filtres")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    communes_filter = st.multiselect(
+        "Communes",
+        options=sorted([nom for nom in df['commune_nom'].dropna().unique() if nom]),
+        help="Sélectionner une ou plusieurs communes"
+    )
+
+with col2:
+    types_filter = st.multiselect(
+        "Types de projet",
+        options=sorted([t for t in df['type_projet'].dropna().unique() if t]),
+        help="Filtrer par type"
+    )
+
+with col3:
+    statuts_filter = st.multiselect(
+        "Statuts",
+        options=sorted([s for s in df['statut'].dropna().unique() if s]),
+        help="Filtrer par statut"
+    )
+
+# Filtre budget
+col1, col2 = st.columns(2)
+
+with col1:
+    budget_min = st.number_input(
+        "Budget minimum (MDH)",
+        min_value=0.0,
+        value=0.0,
+        step=0.1
+    )
+
+with col2:
+    budget_max = st.number_input(
+        "Budget maximum (MDH)",
+        min_value=0.0,
+        value=float(df['budget_mdh'].max()),
+        step=0.1
+    )
+
+# Appliquer filtres
+df_filtered = df.copy()
+
+if communes_filter:
+    df_filtered = df_filtered[df_filtered['commune_nom'].isin(communes_filter)]
+
+if types_filter:
+    df_filtered = df_filtered[df_filtered['type_projet'].isin(types_filter)]
+
+if statuts_filter:
+    df_filtered = df_filtered[df_filtered['statut'].isin(statuts_filter)]
+
+df_filtered = df_filtered[
+    (df_filtered['budget_mdh'] >= budget_min) &
+    (df_filtered['budget_mdh'] <= budget_max)
+]
+
+st.info(f"📊 {len(df_filtered)} projet(s) | Budget : {df_filtered['budget_mdh'].sum():,.2f} MDH")
+
+# Graphiques
+if len(df_filtered) > 0:
     st.divider()
-    st.subheader("📊 Statistiques")
+    st.subheader("📈 Analyses")
     
-    col1, col2, col3 = st.columns(3)
+    tab1, tab2, tab3 = st.tabs(["Par Commune", "Par Type", "Distribution Budget"])
     
-    with col1:
-        st.metric("🏗️ Projets (échantillon)", len(df))
-        st.caption(f"Total en base : {nb_projets}")
+    with tab1:
+        df_by_commune = df_filtered.groupby('commune_nom').agg({
+            'id': 'count',
+            'budget_mdh': 'sum'
+        }).reset_index()
+        df_by_commune.columns = ['Commune', 'Nb Projets', 'Budget (MDH)']
+        df_by_commune = df_by_commune.sort_values('Budget (MDH)', ascending=False).head(15)
+        
+        fig = px.bar(
+            df_by_commune,
+            x='Commune',
+            y='Budget (MDH)',
+            color='Nb Projets',
+            title="Top 15 Communes par Budget",
+            color_continuous_scale='Viridis'
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with tab2:
+        df_by_type = df_filtered.groupby('type_projet').agg({
+            'id': 'count',
+            'budget_mdh': 'sum'
+        }).reset_index()
+        df_by_type.columns = ['Type', 'Nb Projets', 'Budget (MDH)']
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            fig = px.pie(
+                df_by_type,
+                values='Nb Projets',
+                names='Type',
+                title="Répartition par Type (Nombre)"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            fig = px.pie(
+                df_by_type,
+                values='Budget (MDH)',
+                names='Type',
+                title="Répartition par Type (Budget)"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+    
+    with tab3:
+        fig = px.histogram(
+            df_filtered,
+            x='budget_mdh',
+            nbins=50,
+            title="Distribution des Budgets",
+            labels={'budget_mdh': 'Budget (MDH)'}
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Stats budget
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Min", f"{df_filtered['budget_mdh'].min():.2f} MDH")
+        with col2:
+            st.metric("Médiane", f"{df_filtered['budget_mdh'].median():.2f} MDH")
+        with col3:
+            st.metric("Moyenne", f"{df_filtered['budget_mdh'].mean():.2f} MDH")
+        with col4:
+            st.metric("Max", f"{df_filtered['budget_mdh'].max():.2f} MDH")
+
+# Liste des projets avec pagination
+st.divider()
+st.subheader("📋 Liste des Projets")
+
+if len(df_filtered) > 0:
+    # Pagination
+    items_per_page = 50
+    total_pages = (len(df_filtered) - 1) // items_per_page + 1
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        budget_total = df['budget_mdh'].sum()
-        st.metric("💰 Budget (échantillon)", f"{budget_total:.0f} MDH")
+        page = st.selectbox(
+            f"Page ({len(df_filtered)} projets)",
+            range(1, total_pages + 1),
+            format_func=lambda x: f"Page {x}/{total_pages}"
+        )
     
-    with col3:
-        nb_communes_avec_projets = df['commune_id'].nunique()
-        st.metric("🏘️ Communes", f"{nb_communes_avec_projets}/{len(communes)}")
+    # Afficher la page
+    start_idx = (page - 1) * items_per_page
+    end_idx = min(start_idx + items_per_page, len(df_filtered))
     
-    # Liste simple
-    st.divider()
-    st.subheader("📋 Liste des Projets (100 premiers)")
+    df_page = df_filtered.iloc[start_idx:end_idx]
     
-    df_display = df[['intitule', 'commune_nom', 'type_projet', 'budget_mdh']].copy()
-    df_display.columns = ['Intitulé', 'Commune', 'Type', 'Budget (MDH)']
+    df_display = df_page[['intitule', 'commune_nom', 'type_projet', 'statut', 'budget_mdh']].copy()
+    df_display.columns = ['Intitulé', 'Commune', 'Type', 'Statut', 'Budget (MDH)']
+    df_display = df_display.sort_values('Budget (MDH)', ascending=False)
     
     st.dataframe(
         df_display,
         use_container_width=True,
-        hide_index=True
+        hide_index=True,
+        column_config={
+            "Budget (MDH)": st.column_config.NumberColumn(
+                "Budget (MDH)",
+                format="%.2f"
+            ),
+            "Intitulé": st.column_config.TextColumn(
+                "Intitulé",
+                width="large"
+            )
+        }
     )
     
-    # Graphique simple
+    st.caption(f"Affichage {start_idx + 1} à {end_idx} sur {len(df_filtered)} projets")
+    
+    # Export
     st.divider()
-    st.subheader("📈 Top 10 Communes (échantillon)")
     
-    df_by_commune = df.groupby('commune_nom').agg({
-        'id': 'count',
-        'budget_mdh': 'sum'
-    }).reset_index()
-    df_by_commune.columns = ['Commune', 'Nb Projets', 'Budget (MDH)']
-    df_by_commune = df_by_commune.sort_values('Budget (MDH)', ascending=False).head(10)
+    col1, col2, col3 = st.columns([2, 1, 1])
     
-    fig = px.bar(
-        df_by_commune,
-        x='Commune',
-        y='Budget (MDH)',
-        color='Nb Projets',
-        title="Top 10 Communes"
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    with col2:
+        csv = df_filtered.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            "📥 Exporter Filtré",
+            csv,
+            "projets_filtered.csv",
+            "text/csv",
+            use_container_width=True
+        )
+    
+    with col3:
+        csv_all = df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            "📥 Exporter Tout",
+            csv_all,
+            "projets_all.csv",
+            "text/csv",
+            use_container_width=True
+        )
+else:
+    st.info("Aucun projet ne correspond aux filtres")
 
-except Exception as e:
-    st.error(f"❌ ERREUR : {str(e)}")
-    st.write("**Type d'erreur :**", type(e).__name__)
-    st.write("**Message complet :**")
-    st.exception(e)
-    
-    st.divider()
-    st.warning("**Que faire ?**")
-    st.write("""
-    1. Vérifiez que le script SQL a bien été exécuté
-    2. Exécutez cette requête dans Supabase :
-```sql
-       SELECT COUNT(*) FROM projets_sante;
-       SELECT * FROM projets_sante LIMIT 3;
-```
-    3. Si vous voyez des projets en SQL mais pas ici, c'est un problème de permissions RLS
-    """)
+# Bouton rafraîchir
+st.divider()
+if st.button("🔄 Actualiser les données"):
+    st.cache_data.clear()
+    st.rerun()
