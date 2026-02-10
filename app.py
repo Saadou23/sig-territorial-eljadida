@@ -1,11 +1,11 @@
 """
 APPLICATION WEB - SYSTÈME D'INFORMATION TERRITORIAL
-Point d'entrée avec authentification Supabase
+Authentification obligatoire - Aucune donnée visible sans connexion
 """
 
 import streamlit as st
 from supabase import create_client, Client
-import hashlib
+from datetime import datetime
 
 # ============================================================================
 # CONFIGURATION DE LA PAGE
@@ -78,60 +78,51 @@ def login_user(email, password):
                 
                 # Mettre à jour dernière connexion
                 supabase.table('user_profiles')\
-                    .update({'derniere_connexion': 'now()'})\
+                    .update({'derniere_connexion': datetime.now().isoformat()})\
                     .eq('id', response.user.id)\
                     .execute()
                 
+                # Enregistrer dans audit_auth
+                try:
+                    supabase.table('audit_auth').insert({
+                        'user_id': response.user.id,
+                        'action': 'login',
+                        'details': {'email': email},
+                        'timestamp': datetime.now().isoformat()
+                    }).execute()
+                except:
+                    pass
+                
                 return True, "Connexion réussie"
             else:
-                return False, "Profil utilisateur non trouvé"
+                return False, "Profil utilisateur non trouvé. Contactez l'administrateur."
         
-        return False, "Identifiants incorrects"
+        return False, "Email ou mot de passe incorrect"
     
     except Exception as e:
-        return False, f"Erreur de connexion : {str(e)}"
+        error_msg = str(e)
+        if "Invalid login credentials" in error_msg:
+            return False, "Email ou mot de passe incorrect"
+        return False, f"Erreur de connexion. Veuillez réessayer."
 
 def logout_user():
     """Déconnexion"""
     try:
+        if st.session_state.user:
+            # Enregistrer la déconnexion
+            supabase.table('audit_auth').insert({
+                'user_id': st.session_state.user.id,
+                'action': 'logout',
+                'details': {},
+                'timestamp': datetime.now().isoformat()
+            }).execute()
+        
         supabase.auth.sign_out()
     except:
         pass
     
     st.session_state.user = None
     st.session_state.user_profile = None
-
-def register_user(email, password, nom_complet, role, commune_id=None):
-    """Inscription d'un nouvel utilisateur (Admin seulement)"""
-    try:
-        # Vérifier que l'appelant est Admin
-        if not st.session_state.user_profile or st.session_state.user_profile['role'] != 'Admin':
-            return False, "Permission refusée"
-        
-        # Créer le compte Supabase Auth
-        response = supabase.auth.sign_up({
-            "email": email,
-            "password": password
-        })
-        
-        if response.user:
-            # Créer le profil
-            supabase.table('user_profiles').insert({
-                'id': response.user.id,
-                'email': email,
-                'nom_complet': nom_complet,
-                'role': role,
-                'commune_id': commune_id,
-                'actif': True,
-                'created_by': st.session_state.user.id
-            }).execute()
-            
-            return True, f"Utilisateur {email} créé avec succès"
-        
-        return False, "Erreur lors de la création"
-    
-    except Exception as e:
-        return False, f"Erreur : {str(e)}"
 
 # ============================================================================
 # PAGE DE CONNEXION
@@ -200,14 +191,14 @@ def show_login():
                 st.warning("Veuillez remplir tous les champs")
         
         if forgot:
-            st.info("Contactez l'administrateur pour réinitialiser votre mot de passe")
+            st.info("📧 Contactez l'administrateur pour réinitialiser votre mot de passe : support@eljadida.ma")
         
         # Info contact
         st.divider()
         st.markdown("""
         <div style='text-align: center; color: #666; font-size: 0.9em;'>
             <p>Besoin d'aide ? Contactez l'administrateur système</p>
-            <p>📧 support@eljadida.ma | ☎️ +212 XXX XXX XXX</p>
+            <p>📧 support@eljadida.ma</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -234,6 +225,8 @@ def show_home():
         """)
         if profile.get('communes'):
             st.caption(f"📍 {profile['communes']['nom']}")
+        elif profile.get('secteur') and profile['secteur'] != 'Tous':
+            st.caption(f"🎯 Secteur {profile['secteur']}")
     
     with col3:
         if st.button("🚪 Déconnexion", use_container_width=True):
@@ -242,7 +235,10 @@ def show_home():
     
     st.divider()
     
-    # KPI globaux
+    # Message de bienvenue
+    st.success(f"✅ Bienvenue {profile['nom_complet']} !")
+    
+    # KPI globaux selon le rôle
     st.subheader("📊 Vue d'ensemble")
     
     try:
@@ -275,11 +271,34 @@ def show_home():
             with col4:
                 st.metric("📊 Indicateurs Saisis", nb_indicateurs)
         
+        elif profile['role'] == 'Agent Sectoriel':
+            # Stats pour son secteur
+            if profile['secteur'] != 'Tous':
+                indicateurs_data = supabase.table('indicateurs_communes')\
+                    .select('id, commune_id')\
+                    .eq('axe', profile['secteur'])\
+                    .execute()
+                
+                nb_indicateurs = len(indicateurs_data.data)
+                nb_communes = len(set([i['commune_id'] for i in indicateurs_data.data]))
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("🎯 Mon Secteur", profile['secteur'])
+                with col2:
+                    st.metric("📊 Indicateurs Saisis", nb_indicateurs)
+                with col3:
+                    st.metric("🏘️ Communes Couvertes", f"{nb_communes}/29")
+                with col4:
+                    progression = (nb_communes / 29 * 100) if nb_communes > 0 else 0
+                    st.metric("📈 Progression", f"{progression:.0f}%")
+        
         else:
             # Vue globale pour Admin/Expert
             communes_data = supabase.table('communes').select('*').execute()
             projets_data = supabase.table('projets_sante').select('budget_estime').execute()
-            indicateurs_data = supabase.table('referentiel_indicateurs').select('*').execute()
+            indicateurs_data = supabase.table('indicateurs_communes').select('*').execute()
             
             nb_communes = len(communes_data.data)
             nb_projets = len(projets_data.data)
@@ -295,7 +314,7 @@ def show_home():
             with col3:
                 st.metric("💰 Budget Total", f"{budget_total:,.0f} MDH")
             with col4:
-                st.metric("📋 Indicateurs", nb_indicateurs)
+                st.metric("📊 Indicateurs Saisis", nb_indicateurs)
     
     except Exception as e:
         st.error(f"Erreur chargement données : {str(e)}")
@@ -330,9 +349,9 @@ def show_home():
         
         with col3:
             st.markdown("""
-            ### 📈 Suivi Global
+            ### 📈 Suivi & Notifications
             - Progression de saisie
-            - Statistiques par commune
+            - Alertes retards
             - Dashboards
             
             *Menu → Suivi Saisie*
@@ -357,6 +376,29 @@ def show_home():
             - Valider les saisies
             - Signaler les anomalies
             - Commentaires d'expert
+            
+            *Menu → Suivi Saisie*
+            """)
+    
+    elif profile['role'] == 'Agent Sectoriel':
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown(f"""
+            ### ✍️ Saisie des Indicateurs
+            Secteur : **{profile['secteur']}**
+            
+            Accédez à votre module de saisie dans le menu latéral.
+            
+            Vous pouvez saisir pour **toutes les 29 communes**.
+            """)
+        
+        with col2:
+            st.markdown("""
+            ### 📊 Mes Données
+            - Consulter mes saisies
+            - Voir ma progression
+            - Exporter mes données
             
             *Menu → Suivi Saisie*
             """)
@@ -386,46 +428,6 @@ def show_home():
             
             *Menu → Suivi Saisie*
             """)
-    
-    # Guide rapide
-    st.divider()
-    
-    with st.expander("📖 Guide de démarrage rapide"):
-        if profile['role'] == 'Admin':
-            st.markdown("""
-            **En tant qu'Administrateur :**
-            
-            1. **Créer des utilisateurs** (Menu → Gestion Utilisateurs)
-            2. **Assigner les rôles** et communes aux agents
-            3. **Superviser la saisie** (Menu → Suivi Saisie)
-            4. **Exporter les rapports** depuis chaque page
-            
-            **Permissions :** Vous avez accès à toutes les fonctionnalités.
-            """)
-        
-        elif profile['role'] == 'Expert':
-            st.markdown("""
-            **En tant qu'Expert Sectoriel :**
-            
-            1. **Consulter les données** de toutes les communes
-            2. **Analyser les indicateurs** par secteur
-            3. **Valider les saisies** des agents
-            4. **Exporter des rapports** pour analyse
-            
-            **Permissions :** Consultation et validation (pas de modification).
-            """)
-        
-        elif profile['role'] == 'Agent':
-            st.markdown(f"""
-            **En tant qu'Agent Terrain ({profile['communes']['nom']}) :**
-            
-            1. **Sélectionner un secteur** (Eau, Santé, Éducation, Emploi)
-            2. **Remplir les indicateurs** pour votre commune
-            3. **Enregistrer** régulièrement
-            4. **Suivre votre progression** (Menu → Suivi Saisie)
-            
-            **Permissions :** Saisie uniquement pour {profile['communes']['nom']}.
-            """)
 
 # ============================================================================
 # LOGIQUE PRINCIPALE
@@ -438,8 +440,10 @@ def main():
     
     # Vérifier si utilisateur connecté
     if not st.session_state.user or not st.session_state.user_profile:
+        # AUCUNE DONNÉE VISIBLE - Uniquement la page de connexion
         show_login()
     else:
+        # Utilisateur authentifié - Afficher le dashboard
         show_home()
 
 if __name__ == "__main__":
