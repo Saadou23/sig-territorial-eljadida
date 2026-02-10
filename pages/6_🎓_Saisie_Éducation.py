@@ -201,9 +201,9 @@ with st.form("form_education"):
                     else:
                         valeur = st.number_input(
                             indic['libelle'],
-                            0.0,
+                            min_value=0.0,
                             value=float(valeur_existante) if valeur_existante else 0.0,
-                            0.01,
+                            step=0.01,
                             key=f"v_{indic['code']}"
                         )
                 
