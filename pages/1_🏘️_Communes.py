@@ -1,181 +1,97 @@
-"""
-PAGE : COMMUNES
-Consultation et gestion des 29 communes d'El Jadida
-"""
-
+# ============================================================================
+# ⚠️ PROTECTION AUTHENTIFICATION
+# ============================================================================
 import streamlit as st
+if 'user_profile' not in st.session_state or not st.session_state.user_profile:
+    st.error("🔒 Accès Refusé")
+    st.warning("Vous devez vous connecter pour accéder à cette page.")
+    st.info("Retournez à la page d'accueil pour vous connecter.")
+    st.stop()
+profile = st.session_state.user_profile
+# ============================================================================
+
 import pandas as pd
+import plotly.express as px
 from supabase import create_client, Client
 
 st.set_page_config(page_title="Communes", page_icon="🏘️", layout="wide")
 
-# ============================================================================
-# INITIALISATION SUPABASE
-# ============================================================================
-
 @st.cache_resource
-def init_supabase() -> Client:
-    """Initialiser la connexion Supabase"""
+def init_supabase():
     SUPABASE_URL = "https://kvmitmgsczlwzhkccvqz.supabase.co"
     SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt2bWl0bWdzY3psd3poa2NjdnF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA2NjUyMDIsImV4cCI6MjA4NjI0MTIwMn0.xvKizf9RlSv8wxonHAlPw5_hsh3bKSDlFLyOwtI7kxg"
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 supabase = init_supabase()
 
-# ============================================================================
-# INTERFACE
-# ============================================================================
+st.title("🏘️ Communes de la Province d'El Jadida")
 
-st.title("🏘️ Communes d'El Jadida")
+@st.cache_data(ttl=600)
+def load_data():
+    communes = supabase.table('communes').select('*').execute()
+    projets = supabase.table('projets_sante').select('commune_id, budget_estime').execute()
+    return communes.data, projets.data
 
-# Charger les communes
-try:
-    response = supabase.table('communes').select('*').execute()
-    communes = response.data
-    
-    if not communes:
-        st.warning("Aucune commune trouvée dans la base de données")
-        st.stop()
-    
-    df = pd.DataFrame(communes)
-    
-    # Statistiques
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("📍 Total Communes", len(df))
-    
-    with col2:
-        pop_total = df['population'].sum() if 'population' in df.columns else 0
-        st.metric("👥 Population", f"{pop_total:,}")
-    
-    with col3:
-        superficie_total = df['superficie_km2'].sum() if 'superficie_km2' in df.columns else 0
-        st.metric("📏 Superficie", f"{superficie_total:.1f} km²")
-    
-    with col4:
-        st.metric("🏛️ Cercle", "El Jadida")
-    
-    st.divider()
-    
-    # Filtres
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        search = st.text_input("🔍 Rechercher une commune", placeholder="Nom de la commune...")
-    
-    with col2:
-        sort_by = st.selectbox("Trier par", ["Nom (A-Z)", "Code", "Population"])
-    
-    # Filtrer
-    if search:
-        df_filtered = df[df['nom'].str.contains(search, case=False, na=False)]
-    else:
-        df_filtered = df
-    
-    # Trier
-    if sort_by == "Nom (A-Z)":
-        df_filtered = df_filtered.sort_values('nom')
-    elif sort_by == "Code":
-        df_filtered = df_filtered.sort_values('code_commune')
-    elif sort_by == "Population":
-        df_filtered = df_filtered.sort_values('population', ascending=False)
-    
-    st.info(f"📊 {len(df_filtered)} commune(s) affichée(s)")
-    
-    # Tableau
-    st.subheader("📋 Liste des communes")
-    
-    # Préparer l'affichage
-    df_display = df_filtered[['code_commune', 'nom', 'cercle', 'population']].copy()
-    df_display.columns = ['Code', 'Nom', 'Cercle', 'Population']
-    
-    st.dataframe(
-        df_display,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Population": st.column_config.NumberColumn(
-                "Population",
-                format="%d hab."
-            )
-        }
-    )
-    
-    # Détails par commune
-    st.divider()
-    st.subheader("🔍 Détails d'une commune")
-    
-    selected_commune = st.selectbox(
-        "Sélectionner une commune",
-        df_filtered['nom'].tolist()
-    )
-    
-    if selected_commune:
-        commune_data = df_filtered[df_filtered['nom'] == selected_commune].iloc[0]
-        
-        col1, col2 = st.columns([1, 2])
-        
-        with col1:
-            st.markdown(f"""
-            ### {commune_data['nom']}
-            
-            **Code** : {commune_data['code_commune']}  
-            **Cercle** : {commune_data.get('cercle', 'N/A')}  
-            **Caïdat** : {commune_data.get('caidat', 'N/A')}  
-            **Population** : {commune_data.get('population', 0):,} habitants  
-            **Superficie** : {commune_data.get('superficie_km2', 0):.2f} km²
-            """)
-        
-        with col2:
-            # Charger les projets de cette commune
-            try:
-                commune_id = commune_data['id']
-                projets_response = supabase.table('projets_sante')\
-                    .select('*')\
-                    .eq('commune_id', commune_id)\
-                    .execute()
-                
-                nb_projets = len(projets_response.data)
-                budget_total = sum([p.get('budget_estime', 0) or 0 for p in projets_response.data])
-                
-                st.markdown(f"""
-                ### 📊 Projets associés
-                
-                **Nombre de projets** : {nb_projets}  
-                **Budget total** : {budget_total/1_000_000:,.2f} MDH
-                """)
-                
-                if nb_projets > 0:
-                    with st.expander(f"Voir les {nb_projets} projet(s)"):
-                        df_projets = pd.DataFrame(projets_response.data)
-                        for idx, projet in df_projets.iterrows():
-                            st.markdown(f"""
-                            **{idx+1}. {projet.get('intitule', 'Sans titre')}**
-                            - Budget : {(projet.get('budget_estime', 0) or 0)/1_000_000:.2f} MDH
-                            - Statut : {projet.get('statut', 'N/A')}
-                            - Type : {projet.get('type_projet', 'N/A')}
-                            """)
-                            st.divider()
-                
-            except Exception as e:
-                st.error(f"Erreur chargement projets : {str(e)}")
-    
-    # Export
-    st.divider()
-    
-    col1, col2 = st.columns([3, 1])
-    
-    with col2:
-        csv = df_filtered.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            "📥 Exporter CSV",
-            csv,
-            "communes_el_jadida.csv",
-            "text/csv",
-            use_container_width=True
-        )
+communes, projets = load_data()
 
-except Exception as e:
-    st.error(f"❌ Erreur lors du chargement des données : {str(e)}")
-    st.exception(e)
+if not communes:
+    st.warning("Aucune commune trouvée")
+    st.stop()
+
+df = pd.DataFrame(communes)
+
+# Stats projets
+df_projets = pd.DataFrame(projets)
+if not df_projets.empty:
+    stats = df_projets.groupby('commune_id').agg({'budget_estime': ['count', 'sum']}).reset_index()
+    stats.columns = ['id', 'nb_projets', 'budget_total']
+    df = df.merge(stats, on='id', how='left')
+    df['nb_projets'] = df['nb_projets'].fillna(0).astype(int)
+    df['budget_mdh'] = df['budget_total'].fillna(0) / 1_000_000
+else:
+    df['nb_projets'] = 0
+    df['budget_mdh'] = 0.0
+
+# KPI
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    st.metric("🏘️ Total Communes", len(df))
+with col2:
+    st.metric("🏙️ Urbaines", len(df[df['milieu'] == 'Urbain']))
+with col3:
+    st.metric("🌾 Rurales", len(df[df['milieu'] == 'Rural']))
+with col4:
+    st.metric("💰 Budget Total", f"{df['budget_mdh'].sum():,.0f} MDH")
+
+st.divider()
+
+# Filtres
+col1, col2 = st.columns(2)
+with col1:
+    milieu_filter = st.selectbox("Type", ["Tous", "Urbain", "Rural"])
+with col2:
+    search = st.text_input("🔍 Rechercher", placeholder="Nom de commune...")
+
+df_filtered = df.copy()
+if milieu_filter != "Tous":
+    df_filtered = df_filtered[df_filtered['milieu'] == milieu_filter]
+if search:
+    df_filtered = df_filtered[df_filtered['nom'].str.contains(search, case=False, na=False)]
+
+st.info(f"📊 {len(df_filtered)} commune(s)")
+
+# Graphique
+st.subheader("📈 Top 10 Communes par Budget")
+df_top = df_filtered.nlargest(10, 'budget_mdh')
+fig = px.bar(df_top, x='nom', y='budget_mdh', color='nb_projets', title="Budget par Commune")
+st.plotly_chart(fig, use_container_width=True)
+
+# Liste
+st.divider()
+st.subheader("📋 Liste des Communes")
+df_display = df_filtered[['nom', 'milieu', 'nb_projets', 'budget_mdh']].copy()
+df_display.columns = ['Commune', 'Type', 'Projets', 'Budget (MDH)']
+st.dataframe(df_display.sort_values('Budget (MDH)', ascending=False), use_container_width=True, hide_index=True)
+
+csv = df_filtered.to_csv(index=False).encode('utf-8')
+st.download_button("📥 Exporter CSV", csv, "communes.csv", "text/csv")

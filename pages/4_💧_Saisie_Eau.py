@@ -1,9 +1,20 @@
+# ============================================================================
+# ⚠️ PROTECTION AUTHENTIFICATION
+# ============================================================================
+import streamlit as st
+if 'user_profile' not in st.session_state or not st.session_state.user_profile:
+    st.error("🔒 Accès Refusé")
+    st.warning("Vous devez vous connecter pour accéder à cette page.")
+    st.info("Retournez à la page d'accueil pour vous connecter.")
+    st.stop()
+profile = st.session_state.user_profile
+# ============================================================================
+
 """
 PAGE : SAISIE INDICATEURS EAU
 Formulaire de saisie des 10 indicateurs du secteur Eau
 """
 
-import streamlit as st
 import pandas as pd
 from datetime import datetime
 from supabase import create_client, Client

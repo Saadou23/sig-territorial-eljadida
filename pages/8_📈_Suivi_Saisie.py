@@ -1,9 +1,20 @@
+# ============================================================================
+# ⚠️ PROTECTION AUTHENTIFICATION
+# ============================================================================
+import streamlit as st
+if 'user_profile' not in st.session_state or not st.session_state.user_profile:
+    st.error("🔒 Accès Refusé")
+    st.warning("Vous devez vous connecter pour accéder à cette page.")
+    st.info("Retournez à la page d'accueil pour vous connecter.")
+    st.stop()
+profile = st.session_state.user_profile
+# ============================================================================
+
 """
 PAGE : SUIVI DE LA SAISIE
 Tableau de bord de suivi global de la saisie des indicateurs
 """
 
-import streamlit as st
 import pandas as pd
 import plotly.express as px
 from supabase import create_client, Client
